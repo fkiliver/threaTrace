@@ -316,6 +316,21 @@ def splitDataset():
 	fw.close()
 	
 
+def read_int_from_subprocess(p):
+	"""安全地从子进程读取整数，跳过空行和无效行"""
+	while True:
+		line = p.stdout.readline()
+		if not line:  # 进程结束
+			return -1
+		line_str = bytes.decode(line).strip()
+		if not line_str:  # 空行，继续读取
+			continue
+		try:
+			return int(line_str)
+		except ValueError:
+			# 如果不是数字，继续读取下一行
+			continue
+
 def validate(graph_id, ss):
 	global loader
 	global data
@@ -337,7 +352,7 @@ def validate(graph_id, ss):
 		edge_s = []
 		edge_e = []
 		this_ts = 0
-		node_num = int(p.stdout.readline())
+		node_num = read_int_from_subprocess(p)
 		if node_num == -1: break
 		for i in range(node_num):
 			line = bytes.decode(p.stdout.readline())
@@ -352,7 +367,8 @@ def validate(graph_id, ss):
 			x.append(line[3:len(line)-1])
 			ts[i] = line[len(line)-1] / 1000
 			if ts[i] > this_ts: this_ts = ts[i]
-		edge_num = int(p.stdout.readline())
+		edge_num = read_int_from_subprocess(p)
+		if edge_num == -1: break
 		for i in range(edge_num):
 			line = bytes.decode(p.stdout.readline())
 			line =list(map(int, line.strip('\n').split(' ')))
@@ -480,7 +496,7 @@ def main():
 			edge_s = []
 			edge_e = []
 			this_ts = 0
-			node_num = int(p.stdout.readline())
+			node_num = read_int_from_subprocess(p)
 			if node_num == -1: break
 			for i in range(node_num):
 				line = bytes.decode(p.stdout.readline())
@@ -496,7 +512,8 @@ def main():
 				x.append(line[3:len(line)-1])
 				ts[i] = line[len(line)-1] / 1000
 				if ts[i] > this_ts: this_ts = ts[i]
-			edge_num = int(p.stdout.readline())
+			edge_num = read_int_from_subprocess(p)
+			if edge_num == -1: break
 			for i in range(edge_num):
 				line = bytes.decode(p.stdout.readline())
 				line =list(map(int, line.strip('\n').split(' ')))

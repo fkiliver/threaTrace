@@ -8,6 +8,15 @@ import torch_geometric.transforms as T
 from torch_geometric.nn import GCNConv, GAE, VGAE
 from torch_geometric.data import Data, InMemoryDataset
 
+# 尝试从配置文件导入权重函数，如果不存在则使用默认函数
+try:
+	from edge_weight_config import get_edge_weight
+except ImportError:
+	# 如果配置文件不存在，使用默认权重函数
+	def get_edge_weight(edge_type_str):
+		"""默认权重函数，所有边类型权重为1.0"""
+		return 1.0
+
 def show(str):
 	print (str + ' ' + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time())))
 
@@ -27,9 +36,11 @@ def MyDatasetA(path, model):
 	label_num = 0
 	f_feature = open('../models/feature.txt', 'r')
 	feature_map = {}
+	feature_map_reverse = {}  # 反向映射：从数字ID到边类型字符串
 	for i in f_feature:
 		temp = i.strip('\n').split('\t')
 		feature_map[temp[0]] = int(temp[1])
+		feature_map_reverse[int(temp[1])] = temp[0]  # 创建反向映射
 		feature_num += 1
 	f_feature.close()
 
@@ -55,6 +66,8 @@ def MyDatasetA(path, model):
 	edgeType_map = {}
 	edge_s = []
 	edge_e = []
+	edge_weights = []  # 存储边权重
+	edge_type_str_list = []  # 存储原始边类型字符串，用于计算权重
 	adj = {}
 	adj2 = {}
 	data_thre = 1000000
@@ -96,9 +109,11 @@ def MyDatasetA(path, model):
 			temp[2] = nodeId_map[temp[2]]		
 			temp[1] = label_map[temp[1]]
 			temp[3] = label_map[temp[3]]
-			temp[4] = feature_map[temp[4]]
+			edge_type_str = temp[4]  # 保存原始边类型字符串
+			temp[4] = feature_map[edge_type_str]
 			edge_s.append(temp[0])
 			edge_e.append(temp[2])
+			edge_type_str_list.append(edge_type_str)  # 保存原始边类型字符串
 			if temp[2] in adj.keys():
 				adj[temp[2]].append(temp[0])
 			else:
@@ -140,7 +155,15 @@ def MyDatasetA(path, model):
 	train_mask = torch.tensor(train_mask, dtype=torch.bool)
 	test_mask = torch.tensor(test_mask, dtype=torch.bool)
 	edge_index = torch.tensor([edge_s, edge_e], dtype=torch.long)
-	data1 = Data(x=x, y=y,edge_index=edge_index, train_mask=train_mask, test_mask = test_mask)
+	
+	# 根据边类型计算权重
+	for edge_type_str in edge_type_str_list:
+		weight = get_edge_weight(edge_type_str)
+		edge_weights.append(weight)
+	edge_weight = torch.tensor(edge_weights, dtype=torch.float)
+	
+	# data1 = Data(x=x, y=y, edge_index=edge_index, edge_weight=edge_weight, train_mask=train_mask, test_mask=test_mask)
+	data1 = Data(x=x, y=y, edge_index=edge_index, train_mask=train_mask, test_mask=test_mask)
 	feature_num *= 2
 	neibor = set()
 	_neibor = {}

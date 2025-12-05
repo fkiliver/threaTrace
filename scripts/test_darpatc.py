@@ -21,7 +21,7 @@ assert args.scene in ['cadets','trace','theia','fivedirections']
 thre_map = {"cadets":1.5,"trace":1.0,"theia":1.5,"fivedirections":1.0}
 b_size = 5000
 nodeA = []
-path = '../graphchi-cpp-master/graph_data/darpatc/' + args.scene + '_test.txt' 
+path = '../graphchi-cpp-master/graph_data/darpatc/' + args.scene + '_test_rcaid.txt' 
 graphId = 1
 show('Start testing graph ' + str(graphId) + ' in model '+str(args.model))
 data1, feature_num, label_num, adj, adj2, nodeA, _nodeA, _neibor = MyDatasetA(path, args.model)

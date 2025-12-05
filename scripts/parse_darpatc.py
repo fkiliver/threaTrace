@@ -11,12 +11,14 @@ def show(str):
 
 os.system('tar -zxvf ../graphchi-cpp-master/graph_data/darpatc/ta1-cadets-e3-official.json.tar.gz')
 os.system('tar -zxvf ../graphchi-cpp-master/graph_data/darpatc/ta1-cadets-e3-official-2.json.tar.gz')
-os.system('tar -zxvf ../graphchi-cpp-master/graph_data/darpatc/ta1-fivedirections-e3-official-2.json.tar.gz')
-os.system('tar -zxvf ../graphchi-cpp-master/graph_data/darpatc/ta1-theia-e3-official-1r.json.tar.gz')
-os.system('tar -zxvf ../graphchi-cpp-master/graph_data/darpatc/ta1-theia-e3-official-6r.json.tar.gz')
-os.system('tar -zxvf ../graphchi-cpp-master/graph_data/darpatc/ta1-trace-e3-official-1.json.tar.gz')
+# os.system('tar -zxvf ../graphchi-cpp-master/graph_data/darpatc/ta1-fivedirections-e3-official-2.json.tar.gz')
+# os.system('tar -zxvf ../graphchi-cpp-master/graph_data/darpatc/ta1-theia-e3-official-1r.json.tar.gz')
+# os.system('tar -zxvf ../graphchi-cpp-master/graph_data/darpatc/ta1-theia-e3-official-6r.json.tar.gz')
+# os.system('tar -zxvf ../graphchi-cpp-master/graph_data/darpatc/ta1-trace-e3-official-1.json.tar.gz')
 
-path_list = ['ta1-cadets-e3-official.json', 'ta1-cadets-e3-official-2.json', 'ta1-fivedirections-e3-official-2.json', 'ta1-theia-e3-official-1r.json', 'ta1-theia-e3-official-6r.json', 'ta1-trace-e3-official-1.json']
+path_list = ['ta1-cadets-e3-official.json', 'ta1-cadets-e3-official-2.json']
+# path_list = ['ta1-theia-e3-official-1r.json', 'ta1-theia-e3-official-6r.json' , 'ta1-trace-e3-official-1.json']
+# path_list = ['ta1-cadets-e3-official.json', 'ta1-cadets-e3-official-2.json', 'ta1-fivedirections-e3-official-2.json', 'ta1-theia-e3-official-1r.json', 'ta1-theia-e3-official-6r.json', 'ta1-trace-e3-official-1.json']
 
 pattern_uuid = re.compile(r'uuid\":\"(.*?)\"') 
 pattern_src = re.compile(r'subject\":{\"com.bbn.tc.schema.avro.cdm18.UUID\":\"(.*?)\"}')
@@ -33,7 +35,7 @@ for path in path_list:
 		now_path  = path + '.' + str(i)
 		if i == 0: now_path = path
 		if not osp.exists(now_path): break
-		f = open(now_path, 'r')
+		f = open(now_path, 'r', encoding='utf-8')
 		show(now_path)
 		cnt  = 0
 		for line in f:
@@ -59,13 +61,14 @@ for path in path_list:
 					continue
 
 			id_nodetype_map[uuid] = subject_type[0]
+		f.close()
 	not_in_cnt = 0
 	for i in range(100):
 		now_path  = path + '.' + str(i)
 		if i == 0: now_path = path
 		if not osp.exists(now_path): break
-		f = open(now_path, 'r')
-		fw = open(now_path+'.txt', 'w')
+		f = open(now_path, 'r', encoding='utf-8')
+		fw = open(now_path+'.txt', 'w', encoding='utf-8')
 		cnt = 0
 		for line in f:
 			cnt += 1
@@ -113,4 +116,4 @@ os.system('cp ta1-fivedirections-e3-official-2.json.23.txt ../graphchi-cpp-maste
 os.system('cp ta1-trace-e3-official-1.json.txt ../graphchi-cpp-master/graph_data/darpatc/trace_train.txt')
 os.system('cp ta1-trace-e3-official-1.json.4.txt ../graphchi-cpp-master/graph_data/darpatc/trace_test.txt')
 
-os.system('rm ta1-*')
+# os.system('rm ta1-*')

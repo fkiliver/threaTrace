@@ -1,0 +1,36 @@
+../graphchi-cpp-master/graph_data/darpatc/trace_test.txt 2025-12-03 15:32:25
+Data(edge_index=[2, 3405646], test_mask=[1211448], train_mask=[1211448], x=[1211448, 46], y=[1211448])
+validating in model  0
+fp and fn:  568928 642520
+Precision:  0.11910363393082822
+Recall:  1.0
+validating in model  1
+fp and fn:  118324 450604
+Precision:  0.36523930836359697
+Recall:  1.0
+validating in model  2
+fp and fn:  95489 22835
+Precision:  0.4161396704626862
+Recall:  1.0
+validating in model  3
+fp and fn:  68153 27336
+Precision:  0.5004270298772382
+Recall:  1.0
+validating in model  4
+fp and fn:  26122 42031
+Precision:  0.7252190197386831
+Recall:  1.0
+root@aaad72488d20:/threaTrace/scripts# python test_darpatc.py --scene trace
+Start testing graph 1 in model 0 2025-12-04 02:04:58
+../graphchi-cpp-master/graph_data/darpatc/trace_test_rcaid.txt 2025-12-04 02:04:59
+0  loss:0.0000  acc:0.5304  fp:568928
+1  loss:0.0000  acc:0.7920  fp:118324
+2  loss:0.0000  acc:0.1930  fp:95489
+3  loss:0.0000  acc:0.2863  fp:68153
+4  loss:0.0000  acc:0.6167  fp:26122
+Finish testing graph 1 in model 0 2025-12-04 02:07:02
+root@aaad72488d20:/threaTrace/scripts# python evaluate_darpatc.py
+67383 25531 1118534 0
+Precision:  0.7252190197386823
+Recall:  0.9999999999999984
+F-Score:  0.8407269006418604
