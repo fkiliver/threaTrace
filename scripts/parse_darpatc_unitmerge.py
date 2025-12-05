@@ -115,7 +115,7 @@ def extract_node_name(line: str) -> Optional[str]:
 def unitmerge_process(edges: List[Tuple[str, str, str, str, str, str]], 
                       node_name_map: Dict[str, str],
                       node_type_map: Dict[str, str],
-                      unit_edge_types: Set[str] = None) -> List[Tuple[str, str, str, str, str, str]]:
+                      unit_edge_types: Set[str] = None) -> Tuple[List[Tuple[str, str, str, str, str, str]], Dict[int, List[int]]]:
     """
     执行 UnitMerge 算法
     
@@ -123,7 +123,7 @@ def unitmerge_process(edges: List[Tuple[str, str, str, str, str, str]],
     :param node_name_map: 节点ID到节点名称的映射
     :param node_type_map: 节点ID到节点类型的映射
     :param unit_edge_types: 被认为是 unit 类型的边类型集合（如果为None，则包含所有包含"unit"的边类型）
-    :return: 处理后的边列表
+    :return: (处理后的边列表, 结果边到原始边索引的映射字典，result_edge_to_original_indices[result_idx] = [orig_idx1, ...])
     """
     if unit_edge_types is None:
         # 默认包含所有包含"unit"的边类型（不区分大小写）
@@ -189,7 +189,9 @@ def unitmerge_process(edges: List[Tuple[str, str, str, str, str, str]],
     
     if len(nodes_to_merge) == 0:
         show("未找到需要合并的节点，返回原始边列表")
-        return edges
+        # 返回原始边和对应的映射（每条边映射到自己）
+        result_edge_to_original_indices = {idx: [idx] for idx in range(len(edges))}
+        return edges, result_edge_to_original_indices
     
     # 第二遍遍历：重新连接边
     # 对于每个需要合并的节点对 (out_node, in_node)：
@@ -199,6 +201,8 @@ def unitmerge_process(edges: List[Tuple[str, str, str, str, str, str]],
     
     # 记录需要添加的新边（使用生成器模式或分批处理以减少内存占用）
     new_edges: List[Tuple[str, str, str, str, str, str]] = []
+    # 记录新边来自哪个原始边索引
+    new_edge_to_original_idx: List[int] = []  # 新边索引 -> 原始边索引
     # 限制新边列表大小，如果太大则分批写入
     MAX_NEW_EDGES_BATCH = 1000000  # 每批最多100万条新边
     # 记录需要修改的边索引：edge_index -> (new_src_id, new_dst_id)
@@ -257,6 +261,7 @@ def unitmerge_process(edges: List[Tuple[str, str, str, str, str, str]],
                     new_edge = (representative_src_id, new_src_type, 
                                dst_id_orig, dst_type, edge_type_orig, timestamp_orig)
                     new_edges.append(new_edge)
+                    new_edge_to_original_idx.append(edge_idx_out)  # 记录新边来自哪个原始边
                     processed_edges.add(edge_idx_out)
                     
                     # 如果新边列表太大，打印警告
@@ -327,6 +332,7 @@ def unitmerge_process(edges: List[Tuple[str, str, str, str, str, str]],
                     new_edge = (representative_dst_id, new_src_type, 
                                dst_id_orig, dst_type, edge_type_orig, timestamp_orig)
                     new_edges.append(new_edge)
+                    new_edge_to_original_idx.append(edge_idx_out)  # 记录新边来自哪个原始边
                     processed_edges.add(edge_idx_out)
                     
                     # 如果新边列表太大，打印警告
@@ -358,7 +364,31 @@ def unitmerge_process(edges: List[Tuple[str, str, str, str, str, str]],
     
     show(f"UnitMerge 完成：原始边数={len(edges)}, 删除边数={len(edges_to_remove)}, 新增边数={len(new_edges)}, 修改边数={len(edges_to_modify)}, 最终边数={len(result_edges)}")
     
-    return result_edges
+    # 构建结果边到原始边索引的映射
+    # result_edge_to_original_indices[result_edge_idx] = [original_edge_idx1, original_edge_idx2, ...]
+    result_edge_to_original_indices: Dict[int, List[int]] = {}
+    result_idx = 0
+    
+    # 处理保留和修改的原始边
+    for idx, edge in enumerate(edges):
+        if idx in edges_to_remove:
+            continue  # 跳过要删除的边
+        
+        if idx in edges_to_modify:
+            # 修改后的边
+            result_edge_to_original_indices[result_idx] = [idx]
+            result_idx += 1
+        else:
+            # 未修改的边
+            result_edge_to_original_indices[result_idx] = [idx]
+            result_idx += 1
+    
+    # 处理新边（新边来自原始边，记录原始边索引）
+    for new_edge_idx, orig_idx in enumerate(new_edge_to_original_idx):
+        result_edge_to_original_indices[result_idx] = [orig_idx]
+        result_idx += 1
+    
+    return result_edges, result_edge_to_original_indices
 
 # 主处理流程
 for path in path_list:
@@ -421,8 +451,7 @@ for path in path_list:
     
     show(f"节点信息提取完成: 类型映射={len(id_nodetype_map)}, 名称映射={len(id_nodename_map)}")
     
-    # 第二遍：提取所有边
-    all_edges: List[Tuple[str, str, str, str, str, str]] = []
+    # 第二遍：按照 parse_darpatc.py 的逻辑，每个分片文件分别处理
     not_in_cnt = 0
     
     for i in range(100):
@@ -433,7 +462,11 @@ for path in path_list:
             break
         
         f = open(now_path, 'r', encoding='utf-8')
-        show(f"读取边信息: {now_path}")
+        fw = open(now_path + '.unitmerge.txt', 'w', encoding='utf-8')
+        show(f"处理分片文件: {now_path}")
+        
+        # 提取当前分片文件的所有边
+        file_edges: List[Tuple[str, str, str, str, str, str]] = []
         cnt = 0
         
         for line in f:
@@ -471,7 +504,7 @@ for path in path_list:
                         not_in_cnt += 1
                         continue
                     dstType1 = id_nodetype_map[dstId1]
-                    all_edges.append((srcId, srcType, dstId1, dstType1, edgeType, timestamp))
+                    file_edges.append((srcId, srcType, dstId1, dstType1, edgeType, timestamp))
                 
                 # 处理第二个目标节点
                 dstId2 = pattern_dst2.findall(line)
@@ -481,42 +514,27 @@ for path in path_list:
                         not_in_cnt += 1
                         continue
                     dstType2 = id_nodetype_map[dstId2]
-                    all_edges.append((srcId, srcType, dstId2, dstType2, edgeType, timestamp))
+                    file_edges.append((srcId, srcType, dstId2, dstType2, edgeType, timestamp))
         
         f.close()
-    
-    show(f"边信息提取完成: 总边数={len(all_edges)}, 缺失节点数={not_in_cnt}")
-    
-    # 执行 UnitMerge 算法
-    show("开始执行 UnitMerge 算法...")
-    merged_edges = unitmerge_process(all_edges, id_nodename_map, id_nodetype_map)
-    
-    # 按照 parse_darpatc.py 的逻辑，为每个分片文件创建对应的输出文件
-    # 创建文件句柄映射（与 parse_darpatc.py 保持一致）
-    file_handles: Dict[int, any] = {}
-    for i in range(100):
-        now_path = path + '.' + str(i)
-        if i == 0:
-            now_path = path
-        if not osp.exists(now_path):
-            break
         
-        output_path = now_path + '.unitmerge.txt'
-        file_handles[i] = open(output_path, 'w', encoding='utf-8')
-    
-    # 将合并后的边写入第一个文件（主文件）
-    # 注意：由于 UnitMerge 是全局操作，合并后的边可能来自不同分片
-    # 为了保持与 parse_darpatc.py 的文件结构一致，我们将所有合并后的边写入主文件
-    if 0 in file_handles:
-        for edge in merged_edges:
-            edge_line = '\t'.join(edge) + '\n'
-            file_handles[0].write(edge_line)
-    
-    # 关闭所有文件句柄
-    for fw in file_handles.values():
+        # 对当前分片文件的边执行 UnitMerge 算法
+        if len(file_edges) > 0:
+            show(f"分片 {i} 边数: {len(file_edges)}，开始执行 UnitMerge...")
+            merged_edges, _ = unitmerge_process(file_edges, id_nodename_map, id_nodetype_map)
+            
+            # 将合并后的边写入当前分片的输出文件
+            for edge in merged_edges:
+                edge_line = '\t'.join(edge) + '\n'
+                fw.write(edge_line)
+            
+            show(f"分片 {i} 处理完成: 原始边数={len(file_edges)}, 合并后边数={len(merged_edges)}")
+        else:
+            show(f"分片 {i} 无边，跳过")
+        
         fw.close()
     
-    show(f"处理完成: {path}，已创建 {len(file_handles)} 个输出文件")
+    show(f"处理完成: {path}，缺失节点数={not_in_cnt}")
 
 # 复制文件到目标目录（根据需要修改）
 os.system('cp ta1-theia-e3-official-1r.json.txt ../graphchi-cpp-master/graph_data/darpatc/theia_train.txt')
