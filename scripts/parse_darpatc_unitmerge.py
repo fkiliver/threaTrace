@@ -490,18 +490,32 @@ for path in path_list:
     show("开始执行 UnitMerge 算法...")
     merged_edges = unitmerge_process(all_edges, id_nodename_map, id_nodetype_map)
     
-    # 输出处理后的边文件
-    output_path = path + '.unitmerge.txt'
-    fw = open(output_path, 'w', encoding='utf-8')
+    # 按照 parse_darpatc.py 的逻辑，为每个分片文件创建对应的输出文件
+    # 创建文件句柄映射（与 parse_darpatc.py 保持一致）
+    file_handles: Dict[int, any] = {}
+    for i in range(100):
+        now_path = path + '.' + str(i)
+        if i == 0:
+            now_path = path
+        if not osp.exists(now_path):
+            break
+        
+        output_path = now_path + '.unitmerge.txt'
+        file_handles[i] = open(output_path, 'w', encoding='utf-8')
     
-    # 写入所有处理后的边
-    for edge in merged_edges:
-        edge_line = '\t'.join(edge) + '\n'
-        fw.write(edge_line)
+    # 将合并后的边写入第一个文件（主文件）
+    # 注意：由于 UnitMerge 是全局操作，合并后的边可能来自不同分片
+    # 为了保持与 parse_darpatc.py 的文件结构一致，我们将所有合并后的边写入主文件
+    if 0 in file_handles:
+        for edge in merged_edges:
+            edge_line = '\t'.join(edge) + '\n'
+            file_handles[0].write(edge_line)
     
-    fw.close()
+    # 关闭所有文件句柄
+    for fw in file_handles.values():
+        fw.close()
     
-    show(f"处理完成: {path}，输出文件: {output_path}")
+    show(f"处理完成: {path}，已创建 {len(file_handles)} 个输出文件")
 
 # 复制文件到目标目录（根据需要修改）
 os.system('cp ta1-theia-e3-official-1r.json.txt ../graphchi-cpp-master/graph_data/darpatc/theia_train.txt')
