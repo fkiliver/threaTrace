@@ -49,6 +49,7 @@ def show(str):
 # 解压文件（如果需要）
 # os.system('tar -zxvf ../graphchi-cpp-master/graph_data/darpatc/ta1-cadets-e3-official.json.tar.gz')
 # os.system('tar -zxvf ../graphchi-cpp-master/graph_data/darpatc/ta1-cadets-e3-official-2.json.tar.gz')
+os.system('tar -zxvf ../graphchi-cpp-master/graph_data/darpatc/ta1-trace-e3-official-1.json.tar.gz')
 
 # path_list = ['ta1-cadets-e3-official.json', 'ta1-cadets-e3-official-2.json']
 path_list = ['ta1-trace-e3-official-1.json']
