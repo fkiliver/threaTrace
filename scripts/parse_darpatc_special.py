@@ -64,7 +64,7 @@ def find_descendants_dfs(start_node: str, graph_edges: Dict[str, List[str]]) -> 
 
 
 def find_special_nodes_and_add_edges(
-    input_file: str, output_file: str, new_edge_type: str = "EVENT_FLASH", new_timestamp: int = None
+    input_file: str, output_file: str, new_edge_type: str = "EVENT_RCAID", new_timestamp: int = None
 ) -> Tuple[int, int, int]:
     """
     读取边列表文件，找出特殊节点及其后代，并将根节点与后代节点直接相连的新边添加到原始边文件中。
@@ -73,7 +73,7 @@ def find_special_nodes_and_add_edges(
 
     :param input_file: 输入边列表文件路径
     :param output_file: 输出边列表文件路径（包含原始边和新添加的边）
-    :param new_edge_type: 新添加边的类型（默认：EVENT_FLASH）
+    :param new_edge_type: 新添加边的类型（默认：EVENT_RCAID）
     :param new_timestamp: 新添加边的时间戳（如果为None，则使用特殊节点的第一条边的时间戳）
     :return: (总行数, 特殊节点个数, 新添加的边数)
     """
@@ -235,14 +235,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "-o",
         "--output",
-        default="./flash-add-edge/fivedirections_train_with_flash.txt",
-        help="输出边列表文件路径（包含原始边和新添加的边，默认：./flash-add-edge/fivedirections_train_with_flash.txt）",
+        default="./rcaid-add-edge/fivedirections_train_with_rcaid.txt",
+        help="输出边列表文件路径（包含原始边和新添加的边，默认：./rcaid-add-edge/fivedirections_train_with_rcaid.txt）",
     )
     parser.add_argument(
         "-e",
         "--edge-type",
-        default="EVENT_FLASH",
-        help="新添加边的类型（默认：EVENT_FLASH）",
+        default="EVENT_RCAID",
+        help="新添加边的类型（默认：EVENT_RCAID）",
     )
     parser.add_argument(
         "-t",
