@@ -22,8 +22,8 @@ def show(*s):
 class SAGENet(torch.nn.Module):
 	def __init__(self, in_channels, out_channels, concat=False):
 		super(SAGENet, self).__init__()
-		self.conv1 = SAGEConv(in_channels, 32, normalize=False, concat=concat)
-		self.conv2 = SAGEConv(32, out_channels, normalize=False, concat=concat)
+		self.conv1 = SAGEConv(in_channels, 8, normalize=False, concat=concat)
+		self.conv2 = SAGEConv(8, out_channels, normalize=False, concat=concat)
 
 	def forward(self, x, data_flow):
 		data = data_flow[0]
@@ -91,7 +91,7 @@ def validate():
 	global loader, device, model, optimizer, data
 
 	show('Start validating')
-	path = '../graphchi-cpp-master/graph_data/darpatc/' + args.scene + '_test.txt'
+	path = '../graphchi-cpp-master/graph_data/darpatc/' + args.scene + '_test_unitmerge.txt'
 	data, feature_num, label_num, adj, adj2, nodeA, _nodeA, _neibor = MyDatasetA(path, 0)
 	dataset = TestDatasetA(data)
 	data = dataset[0]
@@ -155,7 +155,7 @@ def train_pro():
 	global data, nodeA, _nodeA, _neibor, b_size, feature_num, label_num, graphId
 	global model, loader, optimizer, device, fp, tn, loop_num
 	os.system('python setup.py')
-	path = '../graphchi-cpp-master/graph_data/darpatc/' + args.scene + '_train.txt'
+	path = '../graphchi-cpp-master/graph_data/darpatc/' + args.scene + '_train_unitmerge.txt'
 	graphId = 0
 	show('Start training graph ' + str(graphId))
 	data1, feature_num, label_num, adj, adj2 = MyDataset(path, 0)
