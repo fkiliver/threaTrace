@@ -51,18 +51,25 @@ pattern_time = re.compile(r'timestampNanos\":(.*?),')
 # 提取节点名称的模式（尝试多种可能的格式）
 # 1. properties.map.name 格式（Subject 节点）
 pattern_name_properties = re.compile(r'\"properties\"\s*:\s*{\s*\"map\"\s*:\s*{\s*\"name\"\s*:\s*\"([^\"]+)\"')
-# 2. 直接的 "name":"value" 格式
+# 2. properties.map.filename 格式（FileObject 节点）
+# 注意：map 中可能有多个字段，filename 可能不是第一个
+pattern_filename_properties = re.compile(r'\"properties\"\s*:\s*{\s*\"map\"\s*:\s*\{[^}]*\"filename\"\s*:\s*\"([^\"]+)\"')
+# 更宽松的 filename 匹配（允许 map 中有换行和空格）
+pattern_filename_properties_loose = re.compile(r'\"properties\"[^}]*\"map\"[^}]*\"filename\"\s*:\s*\"([^\"]+)\"', re.DOTALL)
+# 3. 直接的 "name":"value" 格式
 pattern_name1 = re.compile(r'\"name\"\s*:\s*\"([^\"]+)\"')
-# 3. "name":{"string":"value"} 格式
+# 4. "name":{"string":"value"} 格式
 pattern_name2 = re.compile(r'\"name\"\s*:\s*{\s*\"string\"\s*:\s*\"([^\"]+)\"')
-# 4. hostName 字段
+# 5. hostName 字段
 pattern_hostname = re.compile(r'\"hostName\"\s*:\s*\"([^\"]+)\"')
-# 5. 尝试更宽松的 name 字段匹配（可能在嵌套对象中）
+# 6. 尝试更宽松的 name 字段匹配（可能在嵌套对象中）
 pattern_name_nested = re.compile(r'\"name\"\s*:\s*\"([^\"]+)\"', re.DOTALL)
-# 6. 尝试从 properties 中提取（更宽松的匹配）
+# 7. 尝试从 properties 中提取 name（更宽松的匹配）
 pattern_name_properties_loose = re.compile(r'\"properties\"[^}]*\"name\"\s*:\s*\"([^\"]+)\"')
-# 7. 尝试从 map 中提取 name
+# 8. 尝试从 map 中提取 name
 pattern_name_map = re.compile(r'\"map\"\s*:\s*\{[^}]*\"name\"\s*:\s*\"([^\"]+)\"')
+# 9. 尝试从 map 中提取 filename（更宽松的匹配）
+pattern_filename_map = re.compile(r'\"map\"\s*:\s*\{[^}]*\"filename\"\s*:\s*\"([^\"]+)\"')
 
 notice_num = 1000000
 
@@ -100,53 +107,93 @@ def extract_node_name(line: str, node_type: Optional[str] = None) -> Optional[st
     """
     从 JSON 行中提取节点名称
     
+    根据数据样例：
+    - Subject 节点：使用 properties.map.name
+    - FileObject 节点：使用 properties.map.filename
+    - 其他节点类型：可能没有名称字段
+    
     :param line: JSON 格式的行
     :param node_type: 节点类型（可选，用于优化提取策略）
     :return: 节点名称，如果未找到则返回 None
     """
-    # 对于 Subject 类型的节点，优先尝试 properties.map.name 格式
-    if node_type and ('Subject' in node_type or 'SUBJECT' in node_type):
-        name_matches = pattern_name_properties.findall(line)
-        if name_matches:
-            return name_matches[0]
+    # 根据节点类型优化提取策略
+    if node_type:
+        # FileObject 类型：优先提取 filename
+        if 'FileObject' in node_type or 'FILE_OBJECT' in node_type:
+            # 尝试 properties.map.filename 格式（严格匹配）
+            name_matches = pattern_filename_properties.findall(line)
+            if name_matches:
+                return name_matches[0]
+            
+            # 尝试更宽松的 filename 匹配（允许换行）
+            name_matches = pattern_filename_properties_loose.findall(line)
+            if name_matches:
+                return name_matches[0]
+            
+            # 尝试从 map 中提取 filename
+            name_matches = pattern_filename_map.findall(line)
+            if name_matches:
+                return name_matches[0]
         
-        # 尝试更宽松的 properties 格式
-        name_matches = pattern_name_properties_loose.findall(line)
-        if name_matches:
-            return name_matches[0]
-        
-        # 尝试从 map 中提取 name
-        name_matches = pattern_name_map.findall(line)
-        if name_matches:
-            return name_matches[0]
+        # Subject 类型：优先提取 name
+        elif 'Subject' in node_type or 'SUBJECT' in node_type:
+            # 尝试 properties.map.name 格式
+            name_matches = pattern_name_properties.findall(line)
+            if name_matches:
+                return name_matches[0]
+            
+            # 尝试更宽松的 properties 格式
+            name_matches = pattern_name_properties_loose.findall(line)
+            if name_matches:
+                return name_matches[0]
+            
+            # 尝试从 map 中提取 name
+            name_matches = pattern_name_map.findall(line)
+            if name_matches:
+                return name_matches[0]
     
     # 对于所有节点类型，尝试通用的提取方法
-    # 优先尝试 properties.map.name 格式（Subject 节点）
+    # 1. 优先尝试 properties.map.name 格式（Subject 节点）
     name_matches = pattern_name_properties.findall(line)
     if name_matches:
         return name_matches[0]
     
-    # 尝试更宽松的 properties 格式
+    # 2. 尝试 properties.map.filename 格式（FileObject 节点）
+    name_matches = pattern_filename_properties.findall(line)
+    if name_matches:
+        return name_matches[0]
+    
+    # 2b. 尝试更宽松的 filename 匹配
+    name_matches = pattern_filename_properties_loose.findall(line)
+    if name_matches:
+        return name_matches[0]
+    
+    # 3. 尝试更宽松的 properties.name 格式
     name_matches = pattern_name_properties_loose.findall(line)
     if name_matches:
         return name_matches[0]
     
-    # 尝试从 map 中提取 name
+    # 4. 尝试从 map 中提取 name
     name_matches = pattern_name_map.findall(line)
     if name_matches:
         return name_matches[0]
     
-    # 尝试 hostName 字段（Host 节点）
+    # 5. 尝试从 map 中提取 filename
+    name_matches = pattern_filename_map.findall(line)
+    if name_matches:
+        return name_matches[0]
+    
+    # 6. 尝试 hostName 字段（Host 节点）
     name_matches = pattern_hostname.findall(line)
     if name_matches:
         return name_matches[0]
     
-    # 尝试 "name":{"string":"value"} 格式
+    # 7. 尝试 "name":{"string":"value"} 格式
     name_matches = pattern_name2.findall(line)
     if name_matches:
         return name_matches[0]
     
-    # 尝试直接的 "name":"value" 格式（需要排除接口名称等）
+    # 8. 尝试直接的 "name":"value" 格式（需要排除接口名称等）
     name_matches = pattern_name1.findall(line)
     if name_matches:
         # 排除接口名称等（这些通常在 interfaces 数组中）
