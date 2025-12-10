@@ -12,13 +12,25 @@ FROM ${BASE_IMAGE}
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 
+# --- 设置中文支持环境变量 ---
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+ENV PYTHONIOENCODING=utf-8
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends tzdata && \
     ln -fs /usr/share/zoneinfo/$TZ /etc/localtime && \
     dpkg-reconfigure -f noninteractive tzdata && \
     apt-get install -y --no-install-recommends \
         wget curl ca-certificates git build-essential cmake unzip dos2unix \
-    && rm -rf /var/lib/apt/lists/*
+        locales \
+    && rm -rf /var/lib/apt/lists/* && \
+    # 生成 UTF-8 locale
+    sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && \
+    sed -i '/zh_CN.UTF-8/s/^# //g' /etc/locale.gen && \
+    locale-gen && \
+    # 设置默认 locale
+    update-locale LANG=C.UTF-8 LC_ALL=C.UTF-8
 
 # --- Miniconda 4.10.3 (multi-name/mirror fallback) ---
 ENV CONDA_DIR=/opt/conda
