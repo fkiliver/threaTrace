@@ -17,6 +17,7 @@ import time
 import os
 import os.path as osp
 import re
+import json
 from typing import Dict, List, Set, Tuple, Optional
 from collections import defaultdict
 
@@ -107,109 +108,101 @@ def extract_node_name(line: str, node_type: Optional[str] = None) -> Optional[st
     """
     从 JSON 行中提取节点名称
     
-    根据数据样例：
-    - Subject 节点：使用 properties.map.name
-    - FileObject 节点：使用 properties.map.filename
-    - 其他节点类型：可能没有名称字段
+    根据正确的提取逻辑：
+    - Subject: properties.map.path
+    - MemoryObject: memoryAddress
+    - FileObject: baseObject.properties.map.filename
+    - NetFlowObject: localAddress:localPort+remoteAddress:remotePort
+    - IpcObject: baseObject.properties.map.path
     
     :param line: JSON 格式的行
     :param node_type: 节点类型（可选，用于优化提取策略）
     :return: 节点名称，如果未找到则返回 None
     """
-    # 根据节点类型优化提取策略
+    # 尝试使用 JSON 解析（更准确）
+    try:
+        obj = json.loads(line.strip())
+        datum = obj.get("datum", {})
+        
+        # 1) Subject: properties.map.path
+        if "com.bbn.tc.schema.avro.cdm18.Subject" in datum:
+            try:
+                sub = datum["com.bbn.tc.schema.avro.cdm18.Subject"]
+                uuid = sub.get("uuid")
+                path = sub.get("properties", {}).get("map", {}).get("path")
+                if uuid and path:
+                    return path
+            except (KeyError, TypeError, AttributeError):
+                pass
+        
+        # 2) MemoryObject: memoryAddress
+        if "com.bbn.tc.schema.avro.cdm18.MemoryObject" in datum:
+            try:
+                mem = datum["com.bbn.tc.schema.avro.cdm18.MemoryObject"]
+                uuid = mem.get("uuid")
+                addr = mem.get("memoryAddress")
+                if uuid is not None and addr is not None:
+                    return str(addr)
+            except (KeyError, TypeError, AttributeError):
+                pass
+        
+        # 3) FileObject: baseObject.properties.map.filename
+        if "com.bbn.tc.schema.avro.cdm18.FileObject" in datum:
+            try:
+                fo = datum["com.bbn.tc.schema.avro.cdm18.FileObject"]
+                uuid = fo.get("uuid")
+                filename = fo.get("baseObject", {}).get("properties", {}).get("map", {}).get("filename")
+                if uuid and filename:
+                    return filename
+            except (KeyError, TypeError, AttributeError):
+                pass
+        
+        # 4) NetFlowObject: localAddress:localPort+remoteAddress:remotePort
+        if "com.bbn.tc.schema.avro.cdm18.NetFlowObject" in datum:
+            try:
+                nf = datum["com.bbn.tc.schema.avro.cdm18.NetFlowObject"]
+                uuid = nf.get("uuid")
+                la = nf.get("localAddress")
+                lp = nf.get("localPort")
+                ra = nf.get("remoteAddress")
+                rp = nf.get("remotePort")
+                if uuid and la and lp is not None and ra and rp is not None:
+                    return f"{la}:{lp}+{ra}:{rp}"
+            except (KeyError, TypeError, AttributeError):
+                pass
+        
+        # 5) IpcObject: baseObject.properties.map.path
+        if "com.bbn.tc.schema.avro.cdm18.IpcObject" in datum:
+            try:
+                ipc = datum["com.bbn.tc.schema.avro.cdm18.IpcObject"]
+                uuid = ipc.get("uuid")
+                path = ipc.get("baseObject", {}).get("properties", {}).get("map", {}).get("path")
+                if uuid and path:
+                    return path
+            except (KeyError, TypeError, AttributeError):
+                pass
+        
+    except json.JSONDecodeError:
+        # 如果 JSON 解析失败，回退到正则表达式方法
+        pass
+    
+    # 如果 JSON 解析失败或没有匹配到，尝试使用正则表达式作为备用方案
+    # 这对于格式不完整或损坏的行可能有用
     if node_type:
         # FileObject 类型：优先提取 filename
         if 'FileObject' in node_type or 'FILE_OBJECT' in node_type:
-            # 尝试 properties.map.filename 格式（严格匹配）
             name_matches = pattern_filename_properties.findall(line)
             if name_matches:
                 return name_matches[0]
-            
-            # 尝试更宽松的 filename 匹配（允许换行）
             name_matches = pattern_filename_properties_loose.findall(line)
             if name_matches:
                 return name_matches[0]
-            
-            # 尝试从 map 中提取 filename
-            name_matches = pattern_filename_map.findall(line)
-            if name_matches:
-                return name_matches[0]
         
-        # Subject 类型：优先提取 name
+        # Subject 类型：优先提取 path 或 name
         elif 'Subject' in node_type or 'SUBJECT' in node_type:
-            # 尝试 properties.map.name 格式
             name_matches = pattern_name_properties.findall(line)
             if name_matches:
                 return name_matches[0]
-            
-            # 尝试更宽松的 properties 格式
-            name_matches = pattern_name_properties_loose.findall(line)
-            if name_matches:
-                return name_matches[0]
-            
-            # 尝试从 map 中提取 name
-            name_matches = pattern_name_map.findall(line)
-            if name_matches:
-                return name_matches[0]
-    
-    # 对于所有节点类型，尝试通用的提取方法
-    # 1. 优先尝试 properties.map.name 格式（Subject 节点）
-    name_matches = pattern_name_properties.findall(line)
-    if name_matches:
-        return name_matches[0]
-    
-    # 2. 尝试 properties.map.filename 格式（FileObject 节点）
-    name_matches = pattern_filename_properties.findall(line)
-    if name_matches:
-        return name_matches[0]
-    
-    # 2b. 尝试更宽松的 filename 匹配
-    name_matches = pattern_filename_properties_loose.findall(line)
-    if name_matches:
-        return name_matches[0]
-    
-    # 3. 尝试更宽松的 properties.name 格式
-    name_matches = pattern_name_properties_loose.findall(line)
-    if name_matches:
-        return name_matches[0]
-    
-    # 4. 尝试从 map 中提取 name
-    name_matches = pattern_name_map.findall(line)
-    if name_matches:
-        return name_matches[0]
-    
-    # 5. 尝试从 map 中提取 filename
-    name_matches = pattern_filename_map.findall(line)
-    if name_matches:
-        return name_matches[0]
-    
-    # 6. 尝试 hostName 字段（Host 节点）
-    name_matches = pattern_hostname.findall(line)
-    if name_matches:
-        return name_matches[0]
-    
-    # 7. 尝试 "name":{"string":"value"} 格式
-    name_matches = pattern_name2.findall(line)
-    if name_matches:
-        return name_matches[0]
-    
-    # 8. 尝试直接的 "name":"value" 格式（需要排除接口名称等）
-    name_matches = pattern_name1.findall(line)
-    if name_matches:
-        # 排除接口名称等（这些通常在 interfaces 数组中）
-        # 也排除在 "interfaces" 数组中的 name
-        interfaces_pos = line.find('"interfaces"')
-        if interfaces_pos == -1:
-            # 没有 interfaces 字段，直接返回第一个匹配
-            return name_matches[0]
-        else:
-            # 检查 name 是否在 interfaces 之前
-            for name_match in name_matches:
-                name_pos = line.find(f'"name":"{name_match}"')
-                if name_pos != -1 and name_pos < interfaces_pos:
-                    return name_match
-            # 如果所有 name 都在 interfaces 之后，返回第一个（可能是其他字段的 name）
-            return name_matches[0]
     
     return None
 
