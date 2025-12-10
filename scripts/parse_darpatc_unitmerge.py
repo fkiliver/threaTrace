@@ -49,10 +49,20 @@ pattern_type = re.compile(r'\"type\"\s*:\s*\"([^\"]+)\"')
 pattern_time = re.compile(r'timestampNanos\":(.*?),')
 
 # 提取节点名称的模式（尝试多种可能的格式）
+# 1. properties.map.name 格式（Subject 节点）
 pattern_name_properties = re.compile(r'\"properties\"\s*:\s*{\s*\"map\"\s*:\s*{\s*\"name\"\s*:\s*\"([^\"]+)\"')
+# 2. 直接的 "name":"value" 格式
 pattern_name1 = re.compile(r'\"name\"\s*:\s*\"([^\"]+)\"')
+# 3. "name":{"string":"value"} 格式
 pattern_name2 = re.compile(r'\"name\"\s*:\s*{\s*\"string\"\s*:\s*\"([^\"]+)\"')
+# 4. hostName 字段
 pattern_hostname = re.compile(r'\"hostName\"\s*:\s*\"([^\"]+)\"')
+# 5. 尝试更宽松的 name 字段匹配（可能在嵌套对象中）
+pattern_name_nested = re.compile(r'\"name\"\s*:\s*\"([^\"]+)\"', re.DOTALL)
+# 6. 尝试从 properties 中提取（更宽松的匹配）
+pattern_name_properties_loose = re.compile(r'\"properties\"[^}]*\"name\"\s*:\s*\"([^\"]+)\"')
+# 7. 尝试从 map 中提取 name
+pattern_name_map = re.compile(r'\"map\"\s*:\s*\{[^}]*\"name\"\s*:\s*\"([^\"]+)\"')
 
 notice_num = 1000000
 
@@ -86,15 +96,43 @@ def extract_node_type_from_class(line: str) -> Optional[str]:
             return class_name
     return None
 
-def extract_node_name(line: str) -> Optional[str]:
+def extract_node_name(line: str, node_type: Optional[str] = None) -> Optional[str]:
     """
     从 JSON 行中提取节点名称
     
     :param line: JSON 格式的行
+    :param node_type: 节点类型（可选，用于优化提取策略）
     :return: 节点名称，如果未找到则返回 None
     """
+    # 对于 Subject 类型的节点，优先尝试 properties.map.name 格式
+    if node_type and ('Subject' in node_type or 'SUBJECT' in node_type):
+        name_matches = pattern_name_properties.findall(line)
+        if name_matches:
+            return name_matches[0]
+        
+        # 尝试更宽松的 properties 格式
+        name_matches = pattern_name_properties_loose.findall(line)
+        if name_matches:
+            return name_matches[0]
+        
+        # 尝试从 map 中提取 name
+        name_matches = pattern_name_map.findall(line)
+        if name_matches:
+            return name_matches[0]
+    
+    # 对于所有节点类型，尝试通用的提取方法
     # 优先尝试 properties.map.name 格式（Subject 节点）
     name_matches = pattern_name_properties.findall(line)
+    if name_matches:
+        return name_matches[0]
+    
+    # 尝试更宽松的 properties 格式
+    name_matches = pattern_name_properties_loose.findall(line)
+    if name_matches:
+        return name_matches[0]
+    
+    # 尝试从 map 中提取 name
+    name_matches = pattern_name_map.findall(line)
     if name_matches:
         return name_matches[0]
     
@@ -103,17 +141,28 @@ def extract_node_name(line: str) -> Optional[str]:
     if name_matches:
         return name_matches[0]
     
-    # 尝试直接的 "name":"value" 格式
-    name_matches = pattern_name1.findall(line)
-    if name_matches:
-        # 排除接口名称等（这些通常在 interfaces 数组中）
-        if '"interfaces"' not in line or line.find('"name"') < line.find('"interfaces"'):
-            return name_matches[0]
-    
     # 尝试 "name":{"string":"value"} 格式
     name_matches = pattern_name2.findall(line)
     if name_matches:
         return name_matches[0]
+    
+    # 尝试直接的 "name":"value" 格式（需要排除接口名称等）
+    name_matches = pattern_name1.findall(line)
+    if name_matches:
+        # 排除接口名称等（这些通常在 interfaces 数组中）
+        # 也排除在 "interfaces" 数组中的 name
+        interfaces_pos = line.find('"interfaces"')
+        if interfaces_pos == -1:
+            # 没有 interfaces 字段，直接返回第一个匹配
+            return name_matches[0]
+        else:
+            # 检查 name 是否在 interfaces 之前
+            for name_match in name_matches:
+                name_pos = line.find(f'"name":"{name_match}"')
+                if name_pos != -1 and name_pos < interfaces_pos:
+                    return name_match
+            # 如果所有 name 都在 interfaces 之后，返回第一个（可能是其他字段的 name）
+            return name_matches[0]
     
     return None
 
@@ -137,11 +186,11 @@ def main():
     
     # 数据集列表
     path_list = [
-        # 'ta1-cadets-e3-official.json',
-        # 'ta1-cadets-e3-official-2.json',
-        # 'ta1-theia-e3-official-1r.json',
-        # 'ta1-theia-e3-official-6r.json',
-        'ta1-trace-e3-official-1.json'
+        'ta1-cadets-e3-official.json',
+        'ta1-cadets-e3-official-2.json',
+        'ta1-theia-e3-official-1r.json',
+        'ta1-theia-e3-official-6r.json'
+        # 'ta1-trace-e3-official-1.json'
     ]
     
     for path in path_list:
@@ -156,6 +205,9 @@ def main():
         id_nodename_map: Dict[str, str] = {}
         
         show("第一遍：提取节点信息...")
+        sample_lines_without_name = []  # 用于调试：记录没有名称的节点样本
+        max_samples = 5  # 最多记录 5 个样本
+        
         for i in range(100):
             now_path = path + '.' + str(i)
             if i == 0:
@@ -229,15 +281,42 @@ def main():
                     # 如果还是找不到，记录警告但继续处理（不添加到映射中，后续边处理时会跳过）
                     # 注意：这里不添加节点到映射中，意味着后续处理边时如果遇到这个节点ID会被跳过
                 
-                # 提取节点名称
-                node_name = extract_node_name(line)
+                # 提取节点名称（传入节点类型以优化提取）
+                node_name = extract_node_name(line, node_type)
                 if node_name:
                     id_nodename_map[uuid] = node_name
+                else:
+                    # 记录一些没有名称的节点样本（用于调试）
+                    if len(sample_lines_without_name) < max_samples and node_type:
+                        # 只记录有节点类型的节点（说明是有效节点）
+                        sample_lines_without_name.append((node_type, line[:200]))  # 只记录前200个字符
+                # 注意：如果节点没有名称字段，这是正常的（某些节点类型可能没有名称）
+                # 对于 UnitMerge 操作，只有有名称的节点才能进行名称匹配合并
             
             f.close()
         
         show(f"共提取了 {len(id_nodetype_map)} 个节点的类型")
         show(f"共提取了 {len(id_nodename_map)} 个节点的名称")
+        
+        # 如果提取到的节点名称数量为 0，给出警告和调试信息
+        if len(id_nodename_map) == 0:
+            show("警告: 未提取到任何节点名称！")
+            show("这可能是因为:")
+            show("  1. 该数据集的节点没有名称字段")
+            show("  2. 节点名称字段格式与预期不符")
+            show("  3. 需要调整节点名称提取的正则表达式")
+            show("注意: 如果没有节点名称，UnitMerge 操作将无法基于名称匹配进行合并")
+            
+            # 输出一些样本行用于调试
+            if sample_lines_without_name:
+                show(f"\n调试信息: 以下是 {len(sample_lines_without_name)} 个没有名称的节点样本（前200字符）:")
+                for idx, (node_type, sample_line) in enumerate(sample_lines_without_name, 1):
+                    show(f"  样本 {idx} (类型: {node_type}): {sample_line}...")
+                    # 尝试查找可能的名称字段
+                    if '"name"' in sample_line.lower():
+                        show(f"    发现 'name' 关键字，但未匹配成功")
+                    if '"properties"' in sample_line:
+                        show(f"    发现 'properties' 关键字")
         
         # 第二遍：提取所有边，并记录每条边来自哪个分片
         show("第二遍：提取所有边...")
