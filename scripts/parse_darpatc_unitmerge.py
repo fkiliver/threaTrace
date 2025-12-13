@@ -496,7 +496,7 @@ def main():
             if i == 0:
                 now_path = path
             
-            output_path = now_path + '.unitmerge.txt'
+            output_path = now_path + '.txt'
             fw = open(output_path, 'w', encoding='utf-8')
             
             # 写入该分片对应的边
@@ -516,14 +516,12 @@ def main():
     
     # 复制文件到目标目录（根据原始脚本的逻辑）
     show("复制文件到目标目录...")
-    os.system('cp ta1-theia-e3-official-1r.json.unitmerge.txt ../graphchi-cpp-master/graph_data/darpatc/theia_train_unitmerge.txt 2>/dev/null || true')
-    os.system('cp ta1-theia-e3-official-6r.json.8.unitmerge.txt ../graphchi-cpp-master/graph_data/darpatc/theia_test_unitmerge.txt 2>/dev/null || true')
-    os.system('cp ta1-cadets-e3-official.json.1.unitmerge.txt ../graphchi-cpp-master/graph_data/darpatc/cadets_train_unitmerge.txt 2>/dev/null || true')
-    os.system('cp ta1-cadets-e3-official-2.json.unitmerge.txt ../graphchi-cpp-master/graph_data/darpatc/cadets_test_unitmerge.txt 2>/dev/null || true')
-    os.system('cp ta1-fivedirections-e3-official-2.json.unitmerge.txt ../graphchi-cpp-master/graph_data/darpatc/fivedirections_train_unitmerge.txt 2>/dev/null || true')
-    os.system('cp ta1-fivedirections-e3-official-2.json.23.unitmerge.txt ../graphchi-cpp-master/graph_data/darpatc/fivedirections_test_unitmerge.txt 2>/dev/null || true')
-    os.system('cp ta1-trace-e3-official-1.json.unitmerge.txt ../graphchi-cpp-master/graph_data/darpatc/trace_train_unitmerge.txt 2>/dev/null || true')
-    os.system('cp ta1-trace-e3-official-1.json.4.unitmerge.txt ../graphchi-cpp-master/graph_data/darpatc/trace_test_unitmerge.txt 2>/dev/null || true')
+    os.system('cp ta1-theia-e3-official-1r.json.unitmerge.txt ../graphchi-cpp-master/graph_data/darpatc/theia_train.txt 2>/dev/null || true')
+    os.system('cp ta1-theia-e3-official-6r.json.8.unitmerge.txt ../graphchi-cpp-master/graph_data/darpatc/theia_test.txt 2>/dev/null || true')
+    os.system('cp ta1-cadets-e3-official.json.1.unitmerge.txt ../graphchi-cpp-master/graph_data/darpatc/cadets_train.txt 2>/dev/null || true')
+    os.system('cp ta1-cadets-e3-official-2.json.unitmerge.txt ../graphchi-cpp-master/graph_data/darpatc/cadets_test.txt 2>/dev/null || true')
+    os.system('cp ta1-trace-e3-official-1.json.txt ../graphchi-cpp-master/graph_data/darpatc/trace_train.txt 2>/dev/null || true')
+    os.system('cp ta1-trace-e3-official-1.json.4.unitmerge.txt ../graphchi-cpp-master/graph_data/darpatc/trace_test.txt 2>/dev/null || true')
     
     show("所有处理完成！")
 
