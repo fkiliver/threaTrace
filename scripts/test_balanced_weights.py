@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from torch_geometric.datasets import Reddit
 from torch_geometric.data import NeighborSampler
 from torch_geometric.nn import SAGEConv, GATConv
-from data_process_test import *
+from data_process_test_balanced_weights import *
 
 def show(str):
 	print (str + ' ' + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time())))
@@ -21,7 +21,7 @@ assert args.scene in ['cadets','trace','theia','fivedirections']
 thre_map = {"cadets":1.5,"trace":1.0,"theia":1.5,"fivedirections":1.0}
 b_size = 5000
 nodeA = []
-path = '../graphchi-cpp-master/graph_data/darpatc/' + args.scene + '_test.txt' 
+path = '../graphchi-cpp-master/graph_data/darpatc/' + args.scene + '_test_unitmerge.txt' 
 graphId = 1
 show('Start testing graph ' + str(graphId) + ' in model '+str(args.model))
 data1, feature_num, label_num, adj, adj2, nodeA, _nodeA, _neibor = MyDatasetA(path, args.model)
@@ -35,8 +35,9 @@ loader = NeighborSampler(data, size=[1.0, 1.0], num_hops=2, batch_size=b_size, s
 class SAGENet(torch.nn.Module):
 	def __init__(self, in_channels, out_channels, concat=False):
 		super(SAGENet, self).__init__()
-		self.conv1 = SAGEConv(in_channels, 8, normalize=False, concat=concat)
-		self.conv2 = SAGEConv(8, out_channels, normalize=False, concat=concat)
+		# 与训练时的网络结构保持一致：隐藏层维度为32
+		self.conv1 = SAGEConv(in_channels, 32, normalize=False, concat=concat)
+		self.conv2 = SAGEConv(32, out_channels, normalize=False, concat=concat)
 
 	def forward(self, x, data_flow):
 		data = data_flow[0]
@@ -45,7 +46,8 @@ class SAGENet(torch.nn.Module):
 		x = F.dropout(x, p=0.5, training=self.training)
 		data = data_flow[1]
 		x = self.conv2((x, None), data.edge_index, size=data.size)
-		return F.log_softmax(x, dim=1)
+		# 返回原始logits，与训练时保持一致
+		return x
 
 
 
@@ -72,7 +74,10 @@ def test(mask):
 	for data_flow in loader(mask):
 
 		out = model(data.x.to(device), data_flow.to(device))
-		pred = out.max(1)[1]
+		# 模型输出原始logits，需要转换为log_softmax用于预测
+		out_log = F.log_softmax(out, dim=1)
+		pred = out_log.max(1)[1]
+		# 从原始logits计算softmax概率
 		pro  = F.softmax(out, dim=1)
 		pro1 = pro.max(1)
 		for i in range(len(data_flow.n_id)):
@@ -140,4 +145,5 @@ for i in range(len(data.test_mask)):
 fw.close()
 
 show('Finish testing graph ' + str(graphId) + ' in model '+str(args.model))
+
 

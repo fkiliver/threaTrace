@@ -8,16 +8,6 @@ import torch_geometric.transforms as T
 from torch_geometric.nn import GCNConv, GAE, VGAE
 from torch_geometric.data import Data, InMemoryDataset
 
-# 尝试从配置文件导入权重函数和开关，如果不存在则使用默认函数
-try:
-	from edge_weight_config import get_edge_weight, ENABLE_WEIGHT
-except ImportError:
-	# 如果配置文件不存在，使用默认权重函数和开关
-	ENABLE_WEIGHT = False
-	def get_edge_weight(edge_type_str):
-		"""默认权重函数，所有边类型权重为1.0"""
-		return 1.0
-
 class TestDataset(InMemoryDataset):
 	def __init__(self, data_list):
 		super(TestDataset, self).__init__('/tmp/TestDataset')
@@ -38,8 +28,6 @@ def MyDataset(path, model):
 	edgeType_map = {}
 	edge_s = []
 	edge_e = []
-	edge_weights = []  # 存储边权重
-	edge_type_str_list = [] if ENABLE_WEIGHT else None  # 存储原始边类型字符串，用于计算权重（仅在启用权重时使用）
 	data_thre = 1000000
 
 	for out_loop in range(1):
@@ -69,16 +57,13 @@ def MyDataset(path, model):
 				nodeType_cnt += 1
 			temp[3] = nodeType_map[temp[3]]
 			
-			edge_type_str = temp[4]  # 保存原始边类型字符串
-			if not (edge_type_str in edgeType_map.keys()):
-				edgeType_map[edge_type_str] = edgeType_cnt
+			if not (temp[4] in edgeType_map.keys()):
+				edgeType_map[temp[4]] = edgeType_cnt
 				edgeType_cnt += 1
 
-			temp[4] = edgeType_map[edge_type_str]
+			temp[4] = edgeType_map[temp[4]]
 			edge_s.append(temp[0])
 			edge_e.append(temp[2])
-			if ENABLE_WEIGHT:
-				edge_type_str_list.append(edge_type_str)  # 保存原始边类型字符串
 			provenance.append(temp)
 
 	f_train_feature = open('../models/feature.txt', 'w')
@@ -120,30 +105,6 @@ def MyDataset(path, model):
 	train_mask = torch.tensor(train_mask, dtype=torch.bool)
 	test_mask = train_mask
 	edge_index = torch.tensor([edge_s, edge_e], dtype=torch.long)
-	
-	# 根据开关决定是否计算和应用权重
-	if ENABLE_WEIGHT:
-		# 先根据边类型计算每条边的权重，同时统计每个节点相邻边的权重和与度数
-		node_weight_sum = [0.0 for _ in range(node_cnt)]
-		node_weight_deg = [0 for _ in range(node_cnt)]
-		for (s, e), edge_type_str in zip(zip(edge_s, edge_e), edge_type_str_list):
-			weight = get_edge_weight(edge_type_str)
-			edge_weights.append(weight)
-			# 统计两端节点的权重和与度数
-			node_weight_sum[s] += weight
-			node_weight_sum[e] += weight
-			node_weight_deg[s] += 1
-			node_weight_deg[e] += 1
-		# 计算节点权重：使用相邻边权重的平均值（无边的节点保持1.0）
-		node_weight_list = [1.0 for _ in range(node_cnt)]
-		for i in range(node_cnt):
-			if node_weight_deg[i] > 0:
-				node_weight_list[i] = node_weight_sum[i] / float(node_weight_deg[i])
-		edge_weight = torch.tensor(edge_weights, dtype=torch.float)
-		node_weight = torch.tensor(node_weight_list, dtype=torch.float)
-		data1 = Data(x=x, y=y, edge_index=edge_index, edge_weight=edge_weight, node_weight=node_weight, train_mask=train_mask, test_mask=test_mask)
-	else:
-		# 不使用边权重时，不传入任何权重
-		data1 = Data(x=x, y=y, edge_index=edge_index, train_mask=train_mask, test_mask=test_mask)
+	data1 = Data(x=x, y=y,edge_index=edge_index, train_mask=train_mask, test_mask = test_mask)
 	feature_num *= 2
 	return [data1], feature_num, label_num,0,0

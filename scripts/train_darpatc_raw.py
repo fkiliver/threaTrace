@@ -22,8 +22,8 @@ def show(*s):
 class SAGENet(torch.nn.Module):
 	def __init__(self, in_channels, out_channels, concat=False):
 		super(SAGENet, self).__init__()
-		self.conv1 = SAGEConv(in_channels, 8, normalize=False, concat=concat)
-		self.conv2 = SAGEConv(8, out_channels, normalize=False, concat=concat)
+		self.conv1 = SAGEConv(in_channels, 32, normalize=False, concat=concat)
+		self.conv2 = SAGEConv(32, out_channels, normalize=False, concat=concat)
 
 	def forward(self, x, data_flow):
 		data = data_flow[0]
@@ -42,12 +42,6 @@ def train():
 		optimizer.zero_grad()
 		out = model(data.x.to(device), data_flow.to(device))
 		loss = F.nll_loss(out, data.y[data_flow.n_id].to(device))
-		# # 取当前batch中节点的标签与节点权重
-		# target = data.y[data_flow.n_id].to(device)
-		# sample_weight = data.node_weight[data_flow.n_id].to(device)
-		# # 按节点权重对NLL loss做加权：先计算逐样本loss，再乘以权重后做加权平均
-		# per_sample_loss = F.nll_loss(out, target, reduction='none')
-		# loss = (per_sample_loss * sample_weight).sum() / (sample_weight.sum() + 1e-8)
 		loss.backward()
 		optimizer.step()
 		total_loss += loss.item() * data_flow.batch_size

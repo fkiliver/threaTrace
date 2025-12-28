@@ -18,9 +18,12 @@ except ImportError:
 		"""默认权重函数，所有边类型权重为1.0"""
 		return 1.0
 
-class TestDataset(InMemoryDataset):
+def show(str):
+	print (str + ' ' + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time())))
+
+class TestDatasetA(InMemoryDataset):
 	def __init__(self, data_list):
-		super(TestDataset, self).__init__('/tmp/TestDataset')
+		super(TestDatasetA, self).__init__('/tmp/TestDataset')
 		self.data, self.slices = self.collate(data_list)
 
 	def _download(self):
@@ -28,8 +31,34 @@ class TestDataset(InMemoryDataset):
 	def _process(self):
 		pass
 
-def MyDataset(path, model):
+def MyDatasetA(path, model):
 	graphId = model
+	feature_num = 0
+	label_num = 0
+	f_feature = open('../models/feature.txt', 'r')
+	feature_map = {}
+	feature_map_reverse = {}  # 反向映射：从数字ID到边类型字符串
+	for i in f_feature:
+		temp = i.strip('\n').split('\t')
+		feature_map[temp[0]] = int(temp[1])
+		feature_map_reverse[int(temp[1])] = temp[0]  # 创建反向映射
+		feature_num += 1
+	f_feature.close()
+
+	f_label = open('../models/label.txt', 'r')
+	label_map = {}
+	for i in f_label:
+		temp = i.strip('\n').split('\t')
+		label_map[temp[0]] = int(temp[1])
+		label_num += 1
+	f_label.close()
+
+	f_gt = open('groundtruth_uuid.txt', 'r')
+	ground_truth = {}
+	for line in f_gt:
+		ground_truth[line.strip('\n')] = 1
+
+	f_gt.close()
 	node_cnt = 0
 	nodeType_cnt = 0
 	edgeType_cnt = 0
@@ -40,58 +69,65 @@ def MyDataset(path, model):
 	edge_e = []
 	edge_weights = []  # 存储边权重
 	edge_type_str_list = [] if ENABLE_WEIGHT else None  # 存储原始边类型字符串，用于计算权重（仅在启用权重时使用）
+	adj = {}
+	adj2 = {}
 	data_thre = 1000000
-
-	for out_loop in range(1):
-		f = open(path, 'r')
-
-		nodeId_map = {}
-
+	fw = open('groundtruth_nodeId.txt', 'w')
+	fw2 = open('id_to_uuid.txt', 'w')
+	nodeId_map = {}
+	cnt = 0
+	nodeA = []
+	for i in range(1):
+		now_path = path
+		show(now_path)
+		f = open(now_path, 'r')
 		for line in f:
+			cnt += 1
 			temp = line.strip('\n').split('\t')
+			if not (temp[1] in label_map.keys()): continue
+			if not (temp[3] in label_map.keys()): continue
+			if not (temp[4] in feature_map.keys()): continue
+
 			if not (temp[0] in nodeId_map.keys()):
 				nodeId_map[temp[0]] = node_cnt
+				fw2.write(str(node_cnt) + ' ' + temp[0] + '\n')
+
+				if temp[0] in ground_truth.keys():
+					fw.write(str(nodeId_map[temp[0]])+' '+temp[1]+' '+temp[0]+'\n')
+					nodeA.append(node_cnt)
 				node_cnt += 1
+
 			temp[0] = nodeId_map[temp[0]]	
 
 			if not (temp[2] in nodeId_map.keys()):
 				nodeId_map[temp[2]] = node_cnt
+				fw2.write(str(node_cnt) + ' ' + temp[2] + '\n')
+
+				if temp[2] in ground_truth.keys():
+					fw.write(str(nodeId_map[temp[2]])+' '+temp[3]+' '+temp[2]+'\n')
+					nodeA.append(node_cnt)
 				node_cnt += 1
-			temp[2] = nodeId_map[temp[2]]
-
-			if not (temp[1] in nodeType_map.keys()):
-				nodeType_map[temp[1]] = nodeType_cnt
-				nodeType_cnt += 1
-			temp[1] = nodeType_map[temp[1]]
-
-			if not (temp[3] in nodeType_map.keys()):
-				nodeType_map[temp[3]] = nodeType_cnt
-				nodeType_cnt += 1
-			temp[3] = nodeType_map[temp[3]]
-			
+			temp[2] = nodeId_map[temp[2]]		
+			temp[1] = label_map[temp[1]]
+			temp[3] = label_map[temp[3]]
 			edge_type_str = temp[4]  # 保存原始边类型字符串
-			if not (edge_type_str in edgeType_map.keys()):
-				edgeType_map[edge_type_str] = edgeType_cnt
-				edgeType_cnt += 1
-
-			temp[4] = edgeType_map[edge_type_str]
+			temp[4] = feature_map[edge_type_str]
 			edge_s.append(temp[0])
 			edge_e.append(temp[2])
 			if ENABLE_WEIGHT:
 				edge_type_str_list.append(edge_type_str)  # 保存原始边类型字符串
+			if temp[2] in adj.keys():
+				adj[temp[2]].append(temp[0])
+			else:
+				adj[temp[2]] = [temp[0]]
+			if temp[0] in adj2.keys():
+				adj2[temp[0]].append(temp[2])
+			else:
+				adj2[temp[0]] = [temp[2]]
 			provenance.append(temp)
-
-	f_train_feature = open('../models/feature.txt', 'w')
-	for i in edgeType_map.keys():
-		f_train_feature.write(str(i)+'\t'+str(edgeType_map[i])+'\n')
-	f_train_feature.close()
-	f_train_label = open('../models/label.txt', 'w')
-	for i in nodeType_map.keys():
-		f_train_label.write(str(i)+'\t'+str(nodeType_map[i])+'\n')
-	f_train_label.close()
-	feature_num = edgeType_cnt
-	label_num = nodeType_cnt
-
+		f.close()
+	fw.close()
+	fw2.close()
 	x_list = []
 	y_list = []
 	train_mask = []
@@ -104,6 +140,7 @@ def MyDataset(path, model):
 		y_list.append(0)
 		train_mask.append(True)
 		test_mask.append(True)
+
 	for temp in provenance:
 		srcId = temp[0]
 		srcType = temp[1]
@@ -118,8 +155,11 @@ def MyDataset(path, model):
 	x = torch.tensor(x_list, dtype=torch.float)	
 	y = torch.tensor(y_list, dtype=torch.long)
 	train_mask = torch.tensor(train_mask, dtype=torch.bool)
-	test_mask = train_mask
+	test_mask = torch.tensor(test_mask, dtype=torch.bool)
 	edge_index = torch.tensor([edge_s, edge_e], dtype=torch.long)
+	
+	# 节点权重初始化为1.0，当启用边权重时再根据边权重进行更新
+	node_weight_list = [1.0 for _ in range(node_cnt)]
 	
 	# 根据开关决定是否计算和应用权重
 	if ENABLE_WEIGHT:
@@ -135,7 +175,6 @@ def MyDataset(path, model):
 			node_weight_deg[s] += 1
 			node_weight_deg[e] += 1
 		# 计算节点权重：使用相邻边权重的平均值（无边的节点保持1.0）
-		node_weight_list = [1.0 for _ in range(node_cnt)]
 		for i in range(node_cnt):
 			if node_weight_deg[i] > 0:
 				node_weight_list[i] = node_weight_sum[i] / float(node_weight_deg[i])
@@ -143,7 +182,43 @@ def MyDataset(path, model):
 		node_weight = torch.tensor(node_weight_list, dtype=torch.float)
 		data1 = Data(x=x, y=y, edge_index=edge_index, edge_weight=edge_weight, node_weight=node_weight, train_mask=train_mask, test_mask=test_mask)
 	else:
-		# 不使用边权重时，不传入任何权重
-		data1 = Data(x=x, y=y, edge_index=edge_index, train_mask=train_mask, test_mask=test_mask)
+		# 不使用边权重时，节点权重全部为1.0
+		node_weight = torch.tensor(node_weight_list, dtype=torch.float)
+		data1 = Data(x=x, y=y, edge_index=edge_index, node_weight=node_weight, train_mask=train_mask, test_mask=test_mask)
 	feature_num *= 2
-	return [data1], feature_num, label_num,0,0
+	neibor = set()
+	_neibor = {}
+	for i in nodeA:
+		neibor.add(i)
+		if not i in _neibor.keys():
+			templ = []
+			_neibor[i] = templ
+		if not i in _neibor[i]:
+			_neibor[i].append(i)		
+		if i in adj.keys():
+			for j in adj[i]:
+				neibor.add(j)
+				if not j in _neibor.keys():
+					templ = []
+					_neibor[j] = templ
+				if not i in _neibor[j]:
+					_neibor[j].append(i)	
+				if not j in adj.keys(): continue
+				for k in adj[j]:
+					neibor.add(k)
+					if not k in _neibor.keys():
+						templ = []
+						_neibor[k] = templ
+					if not i in _neibor[k]:
+						_neibor[k].append(i)
+		if i in adj2.keys():
+			for j in adj2[i]:
+				neibor.add(j)
+				if not j in adj2.keys(): continue
+				for k in adj2[j]:
+					neibor.add(k)
+	_nodeA = []
+	for i in neibor:
+		_nodeA.append(i)
+	return [data1], feature_num, label_num, adj, adj2, nodeA, _nodeA, _neibor
+

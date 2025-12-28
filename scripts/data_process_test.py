@@ -160,14 +160,27 @@ def MyDatasetA(path, model):
 	
 	# 根据开关决定是否计算和应用权重
 	if ENABLE_WEIGHT:
-		# 根据边类型计算权重
-		for edge_type_str in edge_type_str_list:
+		# 先根据边类型计算每条边的权重，同时统计每个节点相邻边的权重和与度数
+		node_weight_sum = [0.0 for _ in range(node_cnt)]
+		node_weight_deg = [0 for _ in range(node_cnt)]
+		for (s, e), edge_type_str in zip(zip(edge_s, edge_e), edge_type_str_list):
 			weight = get_edge_weight(edge_type_str)
 			edge_weights.append(weight)
+			# 统计两端节点的权重和与度数
+			node_weight_sum[s] += weight
+			node_weight_sum[e] += weight
+			node_weight_deg[s] += 1
+			node_weight_deg[e] += 1
+		# 计算节点权重：使用相邻边权重的平均值（无边的节点保持1.0）
+		node_weight_list = [1.0 for _ in range(node_cnt)]
+		for i in range(node_cnt):
+			if node_weight_deg[i] > 0:
+				node_weight_list[i] = node_weight_sum[i] / float(node_weight_deg[i])
 		edge_weight = torch.tensor(edge_weights, dtype=torch.float)
-		data1 = Data(x=x, y=y, edge_index=edge_index, edge_weight=edge_weight, train_mask=train_mask, test_mask=test_mask)
+		node_weight = torch.tensor(node_weight_list, dtype=torch.float)
+		data1 = Data(x=x, y=y, edge_index=edge_index, edge_weight=edge_weight, node_weight=node_weight, train_mask=train_mask, test_mask=test_mask)
 	else:
-		# 不使用权重
+		# 不使用边权重时，不传入任何权重
 		data1 = Data(x=x, y=y, edge_index=edge_index, train_mask=train_mask, test_mask=test_mask)
 	feature_num *= 2
 	neibor = set()

@@ -8,8 +8,10 @@ import numpy as np
 from torch_geometric.datasets import Reddit
 from torch_geometric.data import NeighborSampler, DataLoader
 from torch_geometric.nn import SAGEConv, GATConv
-from data_process_train import *
-from data_process_test import *
+from torch.nn import CrossEntropyLoss
+from sklearn.utils import class_weight
+from data_process_train_balanced_weights import *
+from data_process_test_balanced_weights import *
 
 thre_map = {"cadets":1.5,"trace":1.0,"theia":1.5,"fivedirections":1.0}
 
@@ -22,8 +24,8 @@ def show(*s):
 class SAGENet(torch.nn.Module):
 	def __init__(self, in_channels, out_channels, concat=False):
 		super(SAGENet, self).__init__()
-		self.conv1 = SAGEConv(in_channels, 8, normalize=False, concat=concat)
-		self.conv2 = SAGEConv(8, out_channels, normalize=False, concat=concat)
+		self.conv1 = SAGEConv(in_channels, 32, normalize=False, concat=concat)
+		self.conv2 = SAGEConv(32, out_channels, normalize=False, concat=concat)
 
 	def forward(self, x, data_flow):
 		data = data_flow[0]
@@ -33,7 +35,18 @@ class SAGENet(torch.nn.Module):
 		data = data_flow[1]
 		x = self.conv2((x, None), data.edge_index, size=data.size,res_n_id=data.res_n_id)
 
-		return F.log_softmax(x, dim=1)
+		# 返回原始logits，不使用log_softmax，因为CrossEntropyLoss内部会处理
+		return x
+
+
+def build_class_weights(train_labels, label_num, device):
+	"""为现有类别计算balanced权重，并为缺失类别填充1.0，保证长度等于label_num。"""
+	unique_labels = np.unique(train_labels)
+	weights = class_weight.compute_class_weight('balanced', classes=unique_labels, y=train_labels)
+	full_weights = torch.ones(label_num, dtype=torch.float)
+	for cls, w in zip(unique_labels, weights):
+		full_weights[int(cls)] = float(w)
+	return full_weights.to(device)
 
 def train():
 	model.train()
@@ -41,13 +54,17 @@ def train():
 	for data_flow in loader(data.train_mask):
 		optimizer.zero_grad()
 		out = model(data.x.to(device), data_flow.to(device))
-		loss = F.nll_loss(out, data.y[data_flow.n_id].to(device))
-		# # 取当前batch中节点的标签与节点权重
-		# target = data.y[data_flow.n_id].to(device)
-		# sample_weight = data.node_weight[data_flow.n_id].to(device)
-		# # 按节点权重对NLL loss做加权：先计算逐样本loss，再乘以权重后做加权平均
-		# per_sample_loss = F.nll_loss(out, target, reduction='none')
-		# loss = (per_sample_loss * sample_weight).sum() / (sample_weight.sum() + 1e-8)
+		# 当前batch的标签
+		target = data.y[data_flow.n_id].to(device)
+		# 检查是否有节点权重（仅在启用边权重时才有）
+		if hasattr(data, 'node_weight') and data.node_weight is not None:
+			# 结合类别权重(class_weights)和节点权重(node_weight)做加权交叉熵
+			sample_weight = data.node_weight[data_flow.n_id].to(device)
+			per_sample_loss = F.cross_entropy(out, target, weight=class_weights, reduction='none')
+			loss = (per_sample_loss * sample_weight).sum() / (sample_weight.sum() + 1e-8)
+		else:
+			# 没有节点权重时，只使用类别权重
+			loss = F.cross_entropy(out, target, weight=class_weights, reduction='mean')
 		loss.backward()
 		optimizer.step()
 		total_loss += loss.item() * data_flow.batch_size
@@ -58,7 +75,10 @@ def test(mask):
 	correct = 0
 	for data_flow in loader(mask):
 		out = model(data.x.to(device), data_flow.to(device))
-		pred = out.max(1)[1]
+		# 模型输出原始logits，需要转换为log_softmax用于预测
+		out_log = F.log_softmax(out, dim=1)
+		pred = out_log.max(1)[1]
+		# 从原始logits计算softmax概率
 		pro  = F.softmax(out, dim=1)
 		pro1 = pro.max(1)
 		for i in range(len(data_flow.n_id)):
@@ -75,7 +95,10 @@ def final_test(mask):
 	correct = 0
 	for data_flow in loader(mask):
 		out = model(data.x.to(device), data_flow.to(device))
-		pred = out.max(1)[1]
+		# 模型输出原始logits，需要转换为log_softmax用于预测
+		out_log = F.log_softmax(out, dim=1)
+		pred = out_log.max(1)[1]
+		# 从原始logits计算softmax概率
 		pro  = F.softmax(out, dim=1)
 		pro1 = pro.max(1)
 		for i in range(len(data_flow.n_id)):
@@ -159,7 +182,7 @@ def validate():
 
 def train_pro():
 	global data, nodeA, _nodeA, _neibor, b_size, feature_num, label_num, graphId
-	global model, loader, optimizer, device, fp, tn, loop_num
+	global model, loader, optimizer, device, fp, tn, loop_num, criterion, class_weights
 	os.system('python setup.py')
 	path = '../graphchi-cpp-master/graph_data/darpatc/' + args.scene + '_train.txt'
 	graphId = 0
@@ -174,6 +197,12 @@ def train_pro():
 	Net = SAGENet
 	model = Net(feature_num, label_num).to(device)
 	optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
+
+	# 计算balanced class weights
+	train_labels = data.y[data.train_mask].cpu().numpy()
+	class_weights = build_class_weights(train_labels, label_num, device)
+	criterion = CrossEntropyLoss(weight=class_weights, reduction='mean')
+	print('Computed class weights:', class_weights)
 
 	for epoch in range(1, 30):
 		loss = train()
@@ -199,6 +228,12 @@ def train_pro():
 				data.train_mask[i] = False
 				data.test_mask[i] = False
 
+			# 重新计算类别权重（因为训练集可能已经改变）
+			train_labels = data.y[data.train_mask].cpu().numpy()
+			if len(train_labels) > 0:
+				class_weights = build_class_weights(train_labels, label_num, device)
+				criterion = CrossEntropyLoss(weight=class_weights, reduction='mean')
+				print('Updated class weights:', class_weights)
 
 			fw = open('../models/fp_feature_label_'+str(graphId)+'_'+str(loop_num)+'.txt', 'w')
 			x_list = data.x[fp]
@@ -273,3 +308,4 @@ if __name__ == "__main__":
 	os.environ['GRAPHCHI_ROOT'] = graphchi_root
 	
 	main()
+

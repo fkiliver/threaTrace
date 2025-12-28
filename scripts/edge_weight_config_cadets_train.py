@@ -1,13 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-边类型权重配置文件
-可以根据不同边类型的重要性设置不同的权重值
-
-使用方法：
-1. 设置 ENABLE_WEIGHT = True 来启用权重，False 来完全关闭权重
-2. 在weight_map字典中添加边类型和对应的权重
-3. 权重值可以是任意正数，建议范围在0.1到10.0之间
-4. 默认权重为1.0（如果边类型不在映射中）
+边类型权重配置文件 - cadets_train
+从weight文件计算得到的归一化权重
+归一化公式: final = 0.5 + (max - cur) / (max - min)
 """
 
 # 权重开关：设置为 False 可以完全关闭权重功能
@@ -42,14 +37,13 @@ weight_map = {
 DEFAULT_WEIGHT = 1.0
 
 def get_edge_weight(edge_type_str):
-	"""
-	根据边类型返回权重
-	
-	参数:
-		edge_type_str: 边类型的字符串表示
-	
-	返回:
-		权重值（float）
-	"""
-	return weight_map.get(edge_type_str, DEFAULT_WEIGHT)
-
+    """
+    根据边类型返回权重
+    
+    参数:
+        edge_type_str: 边类型的字符串表示
+    
+    返回:
+        权重值（float）
+    """
+    return weight_map.get(edge_type_str, DEFAULT_WEIGHT)

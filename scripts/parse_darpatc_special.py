@@ -11,6 +11,7 @@ parse_darpatc_special.py
 """
 
 import os
+import os.path as osp
 import argparse
 from typing import Dict, List, Set, Tuple
 
@@ -77,6 +78,15 @@ def find_special_nodes_and_add_edges(
     :param new_timestamp: 新添加边的时间戳（如果为None，则使用特殊节点的第一条边的时间戳）
     :return: (总行数, 特殊节点个数, 新添加的边数)
     """
+    # 规范化输入文件路径
+    input_file = osp.normpath(osp.abspath(input_file))
+    
+    # 检查输入文件是否存在
+    if not osp.exists(input_file):
+        raise FileNotFoundError(f"输入文件不存在: {input_file}")
+    
+    if not osp.isfile(input_file):
+        raise ValueError(f"输入路径不是文件: {input_file}")
 
     # 存储每个节点的第一条边信息
     # node_first_edges[node_id] = {'timestamp': int, 'is_out_edge': bool, 'edge_type': str, 'node_type': str}
@@ -219,7 +229,9 @@ def find_special_nodes_and_add_edges(
 
     safe_print(f"处理完成！共写入 {len(original_edges)} 条原始边和 {edges_added} 条新边")
 
-    return total_lines, len(special_nodes), edges_added
+    # 返回绝对路径
+    final_output_path = osp.abspath(output_file)
+    return total_lines, len(special_nodes), edges_added, final_output_path
 
 
 def parse_args() -> argparse.Namespace:
@@ -251,6 +263,13 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="新添加边的时间戳（如果未指定，则使用根节点的第一条边的时间戳）",
     )
+    parser.add_argument(
+        "-c",
+        "--copy-to",
+        type=str,
+        default=None,
+        help="处理完成后，将输出文件复制到指定路径（可选）",
+    )
     return parser.parse_args()
 
 
@@ -261,16 +280,40 @@ def main() -> None:
     output_file = args.output
     new_edge_type = args.edge_type
     new_timestamp = args.timestamp
+    copy_to = args.copy_to
+
+    # 规范化路径（处理 Windows 和 Linux 路径格式）
+    input_file = osp.normpath(input_file)
+    output_file = osp.normpath(output_file)
 
     try:
-        total, special_cnt, new_edges_cnt = find_special_nodes_and_add_edges(
+        total, special_cnt, new_edges_cnt, final_output_file = find_special_nodes_and_add_edges(
             input_file, output_file, new_edge_type, new_timestamp
         )
         safe_print(
             f"汇总：原始边数={total}，特殊节点（根节点）数={special_cnt}，新添加边数={new_edges_cnt}"
         )
-    except FileNotFoundError:
-        safe_print(f"错误: 找不到输入文件 {input_file}")
+        
+        # 如果需要复制文件
+        if copy_to:
+            copy_to = osp.normpath(copy_to)
+            # 确保目标目录存在
+            copy_to_dir = osp.dirname(osp.abspath(copy_to))
+            if copy_to_dir and not osp.exists(copy_to_dir):
+                os.makedirs(copy_to_dir, exist_ok=True)
+                safe_print(f"创建目标目录: {copy_to_dir}")
+            
+            # 复制文件
+            import shutil
+            shutil.copy2(final_output_file, copy_to)
+            safe_print(f"已将输出文件复制到: {copy_to}")
+            
+    except FileNotFoundError as e:
+        safe_print(f"错误: {e}")
+        safe_print(f"请检查输入文件路径是否正确: {input_file}")
+        safe_print(f"当前工作目录: {os.getcwd()}")
+    except ValueError as e:
+        safe_print(f"错误: {e}")
     except Exception as e:
         safe_print(f"处理过程中发生错误: {e}")
         import traceback

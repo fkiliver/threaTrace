@@ -13,16 +13,17 @@ def show(str):
 
 def parse_llm_edges(edge_dir, id_nodetype_map, default_timestamp='0'):
 	"""
-	从 scripts/edge/{dataset} 目录下的文件中解析 LLM 建议的边
+	从 scripts/edge/{dataset}_train 目录下的文件中解析 LLM 建议的边
 	支持 trace、theia、cadets 等数据集
 	
-	:param edge_dir: 边文件目录路径（如 scripts/edge/trace, scripts/edge/theia, scripts/edge/cadets）
+	:param edge_dir: 边文件目录路径（如 scripts/edge/trace_train, scripts/edge/theia_train, scripts/edge/cadets_train）
 	:param id_nodetype_map: 节点ID到节点类型的映射
 	:param default_timestamp: 默认时间戳（如果未指定）
 	:return: 边列表，每个元素为 (srcId, srcType, dstId, dstType, edgeType, timestamp)
 	"""
 	llm_edges = []
-	edge_files = glob.glob(osp.join(edge_dir, 'result_*.txt'))
+	# 支持新的文件命名格式：{dataset}_train_result_*.txt
+	edge_files = glob.glob(osp.join(edge_dir, '*_result_*.txt'))
 	
 	if not edge_files:
 		show(f"警告: 在 {edge_dir} 中未找到边文件")
@@ -83,8 +84,8 @@ def parse_llm_edges(edge_dir, id_nodetype_map, default_timestamp='0'):
 				continue
 			
 			# 处理两种格式：
-			# 1. 直接数组格式：[{"subject": "...", "object": "...", "confidence level": ...}]
-			# 2. 对象格式：{"causal_relations": [{"subject": "...", "object": "...", "confidence_level": ...}]}
+			# 1. 直接数组格式：[{"subject": "...", "object": "...", "confidence level": ...}] 或 [{"entity1": "...", "entity2": "...", "confidence_level": ...}]
+			# 2. 对象格式：{"causal_relations": [{"subject": "...", "object": "...", "confidence_level": ...}]} 或 {"causal_relations": [{"entity1": "...", "entity2": "...", "confidence_level": ...}]}
 			edges_data = []
 			if isinstance(parsed_json, list):
 				# 直接数组格式
@@ -95,9 +96,12 @@ def parse_llm_edges(edge_dir, id_nodetype_map, default_timestamp='0'):
 			
 			# 处理每条边
 			for edge_data in edges_data:
-				# 处理两种字段名：'confidence level' 和 'confidence_level'
-				subject = edge_data.get('subject', '').strip()
-				object_node = edge_data.get('object', '').strip()
+				# 支持多种字段名格式：
+				# 1. 'subject' 和 'object'（旧格式）
+				# 2. 'entity1' 和 'entity2'（新格式）
+				# 3. 'confidence level' 和 'confidence_level'
+				subject = edge_data.get('subject', edge_data.get('entity1', '')).strip()
+				object_node = edge_data.get('object', edge_data.get('entity2', '')).strip()
 				confidence = edge_data.get('confidence level', edge_data.get('confidence_level', 0))
 				
 				if not subject or not object_node:
@@ -122,14 +126,15 @@ def parse_llm_edges(edge_dir, id_nodetype_map, default_timestamp='0'):
 	show(f"成功解析 {len(llm_edges)} 条 LLM 建议的边")
 	return llm_edges
 
-os.system('tar -zxvf ../graphchi-cpp-master/graph_data/darpatc/ta1-cadets-e3-official.json.tar.gz')
-os.system('tar -zxvf ../graphchi-cpp-master/graph_data/darpatc/ta1-cadets-e3-official-2.json.tar.gz')
+# os.system('tar -zxvf ../graphchi-cpp-master/graph_data/darpatc/ta1-cadets-e3-official.json.tar.gz')
+# os.system('tar -zxvf ../graphchi-cpp-master/graph_data/darpatc/ta1-cadets-e3-official-2.json.tar.gz')
 # os.system('tar -zxvf ../graphchi-cpp-master/graph_data/darpatc/ta1-fivedirections-e3-official-2.json.tar.gz')
 # os.system('tar -zxvf ../graphchi-cpp-master/graph_data/darpatc/ta1-theia-e3-official-1r.json.tar.gz')
 # os.system('tar -zxvf ../graphchi-cpp-master/graph_data/darpatc/ta1-theia-e3-official-6r.json.tar.gz')
 # os.system('tar -zxvf ../graphchi-cpp-master/graph_data/darpatc/ta1-trace-e3-official-1.json.tar.gz')
 
-path_list = ['ta1-cadets-e3-official.json', 'ta1-cadets-e3-official-2.json']
+path_list = ['ta1-trace-e3-official-1.json']
+# path_list = ['ta1-cadets-e3-official.json', 'ta1-cadets-e3-official-2.json']
 # path_list = ['ta1-theia-e3-official-1r.json', 'ta1-theia-e3-official-6r.json' , 'ta1-trace-e3-official-1.json']
 # path_list = ['ta1-cadets-e3-official.json', 'ta1-cadets-e3-official-2.json', 'ta1-fivedirections-e3-official-2.json', 'ta1-theia-e3-official-1r.json', 'ta1-theia-e3-official-6r.json', 'ta1-trace-e3-official-1.json']
 
@@ -233,16 +238,29 @@ for path in path_list:
 	dataset_name = None
 	path_lower = path.lower()
 	if 'trace' in path_lower:
-		dataset_name = 'trace'
+		dataset_name = 'trace_train'
 	elif 'theia' in path_lower:
-		dataset_name = 'theia'
+		dataset_name = 'theia_train'
 	elif 'cadets' in path_lower:
-		dataset_name = 'cadets'
+		dataset_name = 'cadets_train'
 	
 	if dataset_name:
-		edge_dir = osp.join('scripts', 'edge', dataset_name)
-		if osp.exists(edge_dir):
-			show(f"为 {path} 添加 LLM 建议的边（数据集: {dataset_name}）")
+		# 尝试多种可能的路径（支持从项目根目录或 scripts 目录运行）
+		# 优先使用基于脚本文件位置的路径（最可靠）
+		script_dir = osp.dirname(osp.abspath(__file__))
+		possible_paths = [
+			osp.join(script_dir, 'edge', dataset_name),  # 基于脚本文件位置
+			osp.join('edge', dataset_name),              # 从 scripts 目录运行: python parse_xxx.py
+			osp.join('scripts', 'edge', dataset_name),   # 从项目根目录运行: python scripts/parse_xxx.py
+		]
+		edge_dir = None
+		for p in possible_paths:
+			if osp.exists(p):
+				edge_dir = p
+				break
+
+		if edge_dir:
+			show(f"为 {path} 添加 LLM 建议的边（数据集: {dataset_name}，路径: {edge_dir}）")
 			# 使用最早的时间戳，如果没有则使用 0
 			default_timestamp = str(min_timestamp) if min_timestamp is not None else '0'
 			llm_edges = parse_llm_edges(edge_dir, id_nodetype_map, default_timestamp)
@@ -260,14 +278,12 @@ for path in path_list:
 							fw.write(edge_line)
 				show(f"已将 {len(llm_edges)} 条 LLM 边添加到 {path} 的所有分片文件")
 		else:
-			show(f"警告: 边目录 {edge_dir} 不存在，跳过添加 LLM 边")
+			show(f"警告: 边目录不存在（已尝试: {', '.join(possible_paths)}），跳过添加 LLM 边")
 	
 os.system('cp ta1-theia-e3-official-1r.json.txt ../graphchi-cpp-master/graph_data/darpatc/theia_train.txt')
 os.system('cp ta1-theia-e3-official-6r.json.8.txt ../graphchi-cpp-master/graph_data/darpatc/theia_test.txt')
 os.system('cp ta1-cadets-e3-official.json.1.txt ../graphchi-cpp-master/graph_data/darpatc/cadets_train.txt')
 os.system('cp ta1-cadets-e3-official-2.json.txt ../graphchi-cpp-master/graph_data/darpatc/cadets_test.txt')
-os.system('cp ta1-fivedirections-e3-official-2.json.txt ../graphchi-cpp-master/graph_data/darpatc/fivedirections_train.txt')
-os.system('cp ta1-fivedirections-e3-official-2.json.23.txt ../graphchi-cpp-master/graph_data/darpatc/fivedirections_test.txt')
 os.system('cp ta1-trace-e3-official-1.json.txt ../graphchi-cpp-master/graph_data/darpatc/trace_train.txt')
 os.system('cp ta1-trace-e3-official-1.json.4.txt ../graphchi-cpp-master/graph_data/darpatc/trace_test.txt')
 

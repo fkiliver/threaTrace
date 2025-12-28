@@ -121,6 +121,9 @@ def MyDataset(path, model):
 	test_mask = train_mask
 	edge_index = torch.tensor([edge_s, edge_e], dtype=torch.long)
 	
+	# 节点权重初始化为1.0，当启用边权重时再根据边权重进行更新
+	node_weight_list = [1.0 for _ in range(node_cnt)]
+	
 	# 根据开关决定是否计算和应用权重
 	if ENABLE_WEIGHT:
 		# 先根据边类型计算每条边的权重，同时统计每个节点相邻边的权重和与度数
@@ -135,7 +138,6 @@ def MyDataset(path, model):
 			node_weight_deg[s] += 1
 			node_weight_deg[e] += 1
 		# 计算节点权重：使用相邻边权重的平均值（无边的节点保持1.0）
-		node_weight_list = [1.0 for _ in range(node_cnt)]
 		for i in range(node_cnt):
 			if node_weight_deg[i] > 0:
 				node_weight_list[i] = node_weight_sum[i] / float(node_weight_deg[i])
@@ -143,7 +145,9 @@ def MyDataset(path, model):
 		node_weight = torch.tensor(node_weight_list, dtype=torch.float)
 		data1 = Data(x=x, y=y, edge_index=edge_index, edge_weight=edge_weight, node_weight=node_weight, train_mask=train_mask, test_mask=test_mask)
 	else:
-		# 不使用边权重时，不传入任何权重
-		data1 = Data(x=x, y=y, edge_index=edge_index, train_mask=train_mask, test_mask=test_mask)
+		# 不使用边权重时，节点权重全部为1.0
+		node_weight = torch.tensor(node_weight_list, dtype=torch.float)
+		data1 = Data(x=x, y=y, edge_index=edge_index, node_weight=node_weight, train_mask=train_mask, test_mask=test_mask)
 	feature_num *= 2
 	return [data1], feature_num, label_num,0,0
+
