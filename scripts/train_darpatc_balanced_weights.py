@@ -24,8 +24,8 @@ def show(*s):
 class SAGENet(torch.nn.Module):
 	def __init__(self, in_channels, out_channels, concat=False):
 		super(SAGENet, self).__init__()
-		self.conv1 = SAGEConv(in_channels, 32, normalize=False, concat=concat)
-		self.conv2 = SAGEConv(32, out_channels, normalize=False, concat=concat)
+		self.conv1 = SAGEConv(in_channels, 8, normalize=False, concat=concat)
+		self.conv2 = SAGEConv(8, out_channels, normalize=False, concat=concat)
 
 	def forward(self, x, data_flow):
 		data = data_flow[0]
@@ -227,13 +227,6 @@ def train_pro():
 			for i in tn:
 				data.train_mask[i] = False
 				data.test_mask[i] = False
-
-			# 重新计算类别权重（因为训练集可能已经改变）
-			train_labels = data.y[data.train_mask].cpu().numpy()
-			if len(train_labels) > 0:
-				class_weights = build_class_weights(train_labels, label_num, device)
-				criterion = CrossEntropyLoss(weight=class_weights, reduction='mean')
-				print('Updated class weights:', class_weights)
 
 			fw = open('../models/fp_feature_label_'+str(graphId)+'_'+str(loop_num)+'.txt', 'w')
 			x_list = data.x[fp]
