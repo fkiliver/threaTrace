@@ -11,7 +11,8 @@
 """
 
 # 权重开关：设置为 False 可以完全关闭权重功能
-ENABLE_WEIGHT = True
+# ENABLE_WEIGHT = True
+ENABLE_WEIGHT = False
 
 # 边类型权重映射
 # 格式: '边类型名称': 权重值

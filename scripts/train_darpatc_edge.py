@@ -278,13 +278,7 @@ def train_pro():
 					fw.write(' '+str(j))
 				fw.write('\n')
 			fw.close()
-			torch.save(model.state_dict(),'../models/model_'+str(loop_num))
-			# 记录保存模型时的auc
-			last_saved_auc = auc
-			if auc > best_auc:
-				best_auc = auc
-				best_loop_num = loop_num
-			loop_num += 1
+			# 不再在这里保存模型，改为在训练循环结束后统一保存
 			if len(fp) == 0: break
 		
 		# 保存训练开始时的模型状态，用于回退
@@ -385,6 +379,16 @@ def train_pro():
 			show('Using best model from training: epoch', training_best_epoch, 'AUC:', training_best_auc, 'instead of final AUC:', auc)
 			model.load_state_dict(training_best_state)
 			auc = training_best_auc
+		
+		# 每轮训练结束后都保存模型
+		torch.save(model.state_dict(),'../models/model_'+str(loop_num))
+		show('Saved model at loop', loop_num, 'with AUC:', auc)
+		# 记录保存模型时的auc
+		last_saved_auc = auc
+		if auc > best_auc:
+			best_auc = auc
+			best_loop_num = loop_num
+		loop_num += 1
 		
 		# 检查训练结束后的最终auc是否持续很低
 		if auc < min_auc_for_training and training_start_auc < min_auc_for_training:
