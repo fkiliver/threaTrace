@@ -40,12 +40,33 @@ class SAGENet(torch.nn.Module):
 
 
 def build_class_weights(train_labels, label_num, device):
-	"""为现有类别计算balanced权重，并为缺失类别填充1.0，保证长度等于label_num。"""
+	"""为现有类别计算balanced权重，并为缺失类别填充1.0，保证长度等于label_num。
+	然后将权重映射到[0.5, 1.5]范围。"""
 	unique_labels = np.unique(train_labels)
 	weights = class_weight.compute_class_weight('balanced', classes=unique_labels, y=train_labels)
 	full_weights = torch.ones(label_num, dtype=torch.float)
 	for cls, w in zip(unique_labels, weights):
 		full_weights[int(cls)] = float(w)
+	
+	# 将权重映射到[0.5, 1.5]范围
+	# 只对非1.0的权重进行映射（即实际计算出的类别权重）
+	computed_weights = full_weights[full_weights != 1.0]
+	if len(computed_weights) > 0:
+		min_weight = computed_weights.min().item()
+		max_weight = computed_weights.max().item()
+		
+		if max_weight > min_weight:
+			# 线性映射到[0.5, 1.5]
+			# new_weight = 0.5 + (weight - min_weight) / (max_weight - min_weight) * (1.5 - 0.5)
+			for i in range(label_num):
+				if full_weights[i] != 1.0:  # 只映射计算出的权重
+					full_weights[i] = 0.5 + (full_weights[i] - min_weight) / (max_weight - min_weight) * 1.0
+		else:
+			# 如果所有权重相同，设为1.0
+			for i in range(label_num):
+				if full_weights[i] != 1.0:
+					full_weights[i] = 1.0
+	
 	return full_weights.to(device)
 
 def train():
